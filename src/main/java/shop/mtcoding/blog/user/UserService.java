@@ -23,7 +23,7 @@ public class UserService {
 
     private final UserJPARepository userJPARepository;
 
-    public String 로그인(UserRequest.LoginDTO reqDTO){
+    public String 로그인(UserRequest.LoginDTO reqDTO) {
         User user = userJPARepository.findByUsernameAndPassword(reqDTO.getUsername(), reqDTO.getPassword())
                 .orElseThrow(() -> new Exception401("인증되지 않았습니다"));
 
@@ -32,11 +32,11 @@ public class UserService {
     }
 
     @Transactional
-    public UserResponse.DTO 회원가입(UserRequest.JoinDTO reqDTO){ // ssar
+    public UserResponse.DTO 회원가입(UserRequest.JoinDTO reqDTO) { // ssar
         // 1. 유저네임 중복검사 (서비스 체크) - DB연결이 필요한 것은 Controller에서 작성할 수 없다.
         Optional<User> userOP = userJPARepository.findByUsername(reqDTO.getUsername());
 
-        if(userOP.isPresent()){
+        if (userOP.isPresent()) {
             throw new Exception400("중복된 유저네임입니다");
         }
 
@@ -47,9 +47,9 @@ public class UserService {
     }
 
     /**
-     *  1. 카카오에서 사용자 정보 요청하기
-     *  2. code 방식과 동일
-     *  3. jwt(스프링서버) 생성해서 엡에게 전달
+     * 1. 카카오에서 사용자 정보 요청하기
+     * 2. code 방식과 동일
+     * 3. jwt(스프링서버) 생성해서 엡에게 전달
      */
     @Transactional
     public String 카카오로그인(String kakaoAccessToken) {
@@ -60,7 +60,7 @@ public class UserService {
         // 2. 토큰으로 사용자 정보 받기 (PK, Email)
         HttpHeaders headers = new HttpHeaders();
         headers.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
-        headers.add("Authorization", "Bearer "+kakaoAccessToken);
+        headers.add("Authorization", "Bearer " + kakaoAccessToken);
 
         HttpEntity<MultiValueMap<String, String>> request =
                 new HttpEntity<>(headers);
@@ -72,20 +72,62 @@ public class UserService {
                 KakaoResponse.KakaoUserDTO.class);
 
         // 3. 해당정보로 DB조회 (있을수, 없을수)
-        String username = "kakao_"+response.getBody().getId();
+        String username = "kakao_" + response.getBody().getId();
         User userPS = userJPARepository.findByUsername(username)
                 .orElse(null);
 
         // 4. 있으면? - 조회된 유저정보 리턴
-        if(userPS != null){
+        if (userPS != null) {
             return JwtUtil.create(userPS);
-        }else{
+        } else {
             // 5. 없으면? - 강제 회원가입
             User user = User.builder()
                     .username(username)
                     .password(UUID.randomUUID().toString())
-                    .email(response.getBody().getProperties().getNickname()+"@nate.com")
+                    .email(response.getBody().getProperties().getNickname() + "@nate.com")
                     .provider("kakao")
+                    .build();
+            User returnUser = userJPARepository.save(user);
+            return JwtUtil.create(returnUser);
+        }
+    }
+
+    @Transactional
+    public String 네이버로그인(String naverAccessToken) {
+
+        // 1. RestTemplate 객체 생성
+        RestTemplate rt = new RestTemplate();
+
+        // 2. 토큰으로 사용자 정보 받기 (PK, Email)
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
+        headers.add("Authorization", "Bearer " + naverAccessToken);
+
+        HttpEntity<MultiValueMap<String, String>> request =
+                new HttpEntity<>(headers);
+
+        ResponseEntity<NaverResponse.NaverUserDTO> response = rt.exchange(
+                "https://openapi.naver.com/v1/nid/me",
+                HttpMethod.GET,
+                request,
+                NaverResponse.NaverUserDTO.class
+        );
+
+        // 3. 해당정보로 DB조회 (있을수, 없을수)
+        String username = "naver_" + response.getBody().getResponse().getId();
+        User userPS = userJPARepository.findByUsername(username)
+                .orElse(null);
+
+        // 4. 있으면? - 조회된 유저정보 리턴
+        if (userPS != null) {
+            return JwtUtil.create(userPS);
+        } else {
+            // 5. 없으면? - 강제 회원가입
+            User user = User.builder()
+                    .username(username)
+                    .password(UUID.randomUUID().toString())
+                    .email(response.getBody().getResponse().getEmail())
+                    .provider("naver")
                     .build();
             User returnUser = userJPARepository.save(user);
             return JwtUtil.create(returnUser);
